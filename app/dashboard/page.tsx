@@ -33,7 +33,16 @@ export default function DashboardPage() {
       setProfile(profileData)
 
       // Check if profile is complete
-      const isProfileComplete = profileData?.skill_level && profileData?.interests?.length > 0
+      const isProfileComplete =
+        profileData?.skill_level &&
+        profileData?.interests?.length > 0 &&
+        profileData?.match_goals?.length > 0 &&
+        profileData?.personality_traits?.length > 0 &&
+        profileData?.play_frequency &&
+        profileData?.preferred_round_time &&
+        profileData?.pace_of_play &&
+        profileData?.swing_tendency &&
+        profileData?.group_preference
 
       if (!isProfileComplete) {
         router.push("/profile/setup")

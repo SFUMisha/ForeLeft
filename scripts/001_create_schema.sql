@@ -12,6 +12,13 @@ create table if not exists public.profiles (
   skill_level text check (skill_level in ('beginner', 'intermediate', 'advanced', 'expert')),
   average_handicap numeric(4,1),
   interests text[], -- array of interests like 'competitive', 'casual', 'social', 'networking'
+  match_goals text[] default '{}'::text[],
+  personality_traits text[] default '{}'::text[],
+  play_frequency text,
+  preferred_round_time text,
+  pace_of_play text,
+  swing_tendency text,
+  group_preference text,
   trust_score integer default 100,
   total_rounds integer default 0,
   completed_rounds integer default 0,

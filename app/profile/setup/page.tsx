@@ -29,6 +29,66 @@ const INTERESTS = [
   "Weekend Warrior",
 ]
 
+const MATCH_GOALS = [
+  { value: "meet new people", label: "Meet new people" },
+  { value: "relax outdoors", label: "Relax outdoors" },
+  { value: "stay active", label: "Stay active" },
+  { value: "learn fundamentals", label: "Learn fundamentals" },
+  { value: "sharpen skills", label: "Sharpen skills" },
+  { value: "compete seriously", label: "Compete seriously" },
+  { value: "mentor others", label: "Mentor others" },
+  { value: "host clients", label: "Host clients" },
+]
+
+const PERSONALITY_TRAITS = [
+  { value: "competitive", label: "Competitive" },
+  { value: "easygoing", label: "Easygoing" },
+  { value: "supportive", label: "Supportive" },
+  { value: "focused", label: "Focused" },
+  { value: "strategic", label: "Strategic" },
+  { value: "patient", label: "Patient" },
+  { value: "sociable", label: "Sociable" },
+  { value: "energetic", label: "Energetic" },
+  { value: "encouraging", label: "Encouraging" },
+  { value: "disciplined", label: "Disciplined" },
+  { value: "confident", label: "Confident" },
+  { value: "analytical", label: "Analytical" },
+]
+
+const PLAY_FREQUENCIES = [
+  { value: "multiple_per_week", label: "Multiple times per week" },
+  { value: "weekly", label: "Weekly" },
+  { value: "twice_per_month", label: "2-3 times per month" },
+  { value: "monthly", label: "Monthly" },
+]
+
+const ROUND_TIMES = [
+  { value: "dawn", label: "Dawn / first light" },
+  { value: "morning", label: "Morning" },
+  { value: "midday", label: "Midday" },
+  { value: "afternoon", label: "Afternoon" },
+  { value: "evening", label: "Twilight / evening" },
+]
+
+const PACE_OPTIONS = [
+  { value: "fast", label: "Fast (keep it moving)" },
+  { value: "steady", label: "Steady (comfortable pace)" },
+  { value: "relaxed", label: "Relaxed (take our time)" },
+]
+
+const SWING_TENDENCIES = [
+  { value: "left", label: "Miss left" },
+  { value: "straight", label: "Pretty straight" },
+  { value: "right", label: "Miss right" },
+]
+
+const GROUP_PREFERENCES = [
+  { value: "twosome", label: "Prefer twosomes" },
+  { value: "threesome", label: "Prefer threesomes" },
+  { value: "foursome", label: "Prefer foursomes" },
+  { value: "flexible", label: "Flexible on group size" },
+]
+
 export default function ProfileSetupPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -39,6 +99,13 @@ export default function ProfileSetupPage() {
     skill_level: "",
     average_handicap: "",
     interests: [] as string[],
+    match_goals: [] as string[],
+    personality_traits: [] as string[],
+    play_frequency: "",
+    preferred_round_time: "",
+    pace_of_play: "",
+    swing_tendency: "",
+    group_preference: "",
   })
   const router = useRouter()
   const supabase = createClient()
@@ -64,6 +131,13 @@ export default function ProfileSetupPage() {
           skill_level: profile.skill_level || "",
           average_handicap: profile.average_handicap?.toString() || "",
           interests: profile.interests || [],
+          match_goals: profile.match_goals || [],
+          personality_traits: profile.personality_traits || [],
+          play_frequency: profile.play_frequency || "",
+          preferred_round_time: profile.preferred_round_time || "",
+          pace_of_play: profile.pace_of_play || "",
+          swing_tendency: profile.swing_tendency || "",
+          group_preference: profile.group_preference || "",
         })
       }
 
@@ -82,6 +156,24 @@ export default function ProfileSetupPage() {
     }))
   }
 
+  const toggleMatchGoal = (goal: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      match_goals: prev.match_goals.includes(goal)
+        ? prev.match_goals.filter((g) => g !== goal)
+        : [...prev.match_goals, goal],
+    }))
+  }
+
+  const toggleTrait = (trait: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      personality_traits: prev.personality_traits.includes(trait)
+        ? prev.personality_traits.filter((t) => t !== trait)
+        : [...prev.personality_traits, trait],
+    }))
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!userId) return
@@ -97,6 +189,13 @@ export default function ProfileSetupPage() {
           skill_level: formData.skill_level,
           average_handicap: formData.average_handicap ? Number.parseFloat(formData.average_handicap) : null,
           interests: formData.interests,
+          match_goals: formData.match_goals,
+          personality_traits: formData.personality_traits,
+          play_frequency: formData.play_frequency,
+          preferred_round_time: formData.preferred_round_time,
+          pace_of_play: formData.pace_of_play,
+          swing_tendency: formData.swing_tendency,
+          group_preference: formData.group_preference,
           updated_at: new Date().toISOString(),
         })
         .eq("id", userId)
@@ -218,11 +317,183 @@ export default function ProfileSetupPage() {
             </CardContent>
           </Card>
 
+          {/* Match Goals */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Match Goals</CardTitle>
+              <CardDescription>Select at least one focus for your rounds</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-3">
+                {MATCH_GOALS.map((goal) => (
+                  <button
+                    key={goal.value}
+                    type="button"
+                    onClick={() => toggleMatchGoal(goal.value)}
+                    className={`p-3 rounded-lg border-2 text-sm font-medium transition-colors ${
+                      formData.match_goals.includes(goal.value)
+                        ? "border-primary bg-primary/5 text-primary"
+                        : "border-border hover:border-primary/50"
+                    }`}
+                  >
+                    {goal.label}
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Personality Traits */}
+          <Card>
+            <CardHeader>
+              <CardTitle>On-Course Personality</CardTitle>
+              <CardDescription>Pick the traits that best describe you</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-3">
+                {PERSONALITY_TRAITS.map((trait) => (
+                  <button
+                    key={trait.value}
+                    type="button"
+                    onClick={() => toggleTrait(trait.value)}
+                    className={`p-3 rounded-lg border-2 text-sm font-medium transition-colors ${
+                      formData.personality_traits.includes(trait.value)
+                        ? "border-primary bg-primary/5 text-primary"
+                        : "border-border hover:border-primary/50"
+                    }`}
+                  >
+                    {trait.label}
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Play Preferences */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Play Preferences</CardTitle>
+              <CardDescription>Help us find golfers with a similar rhythm</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="play_frequency">How often do you play?</Label>
+                <select
+                  id="play_frequency"
+                  value={formData.play_frequency}
+                  onChange={(e) => setFormData({ ...formData, play_frequency: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background"
+                  required
+                >
+                  <option value="" disabled>
+                    Select frequency
+                  </option>
+                  {PLAY_FREQUENCIES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="preferred_round_time">Preferred tee time</Label>
+                <select
+                  id="preferred_round_time"
+                  value={formData.preferred_round_time}
+                  onChange={(e) => setFormData({ ...formData, preferred_round_time: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background"
+                  required
+                >
+                  <option value="" disabled>
+                    Select time of day
+                  </option>
+                  {ROUND_TIMES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="pace_of_play">Preferred pace</Label>
+                <select
+                  id="pace_of_play"
+                  value={formData.pace_of_play}
+                  onChange={(e) => setFormData({ ...formData, pace_of_play: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background"
+                  required
+                >
+                  <option value="" disabled>
+                    Select pace of play
+                  </option>
+                  {PACE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="swing_tendency">Swing tendency</Label>
+                <select
+                  id="swing_tendency"
+                  value={formData.swing_tendency}
+                  onChange={(e) => setFormData({ ...formData, swing_tendency: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background"
+                  required
+                >
+                  <option value="" disabled>
+                    Select your usual miss
+                  </option>
+                  {SWING_TENDENCIES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="group_preference">Preferred group size</Label>
+                <select
+                  id="group_preference"
+                  value={formData.group_preference}
+                  onChange={(e) => setFormData({ ...formData, group_preference: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background"
+                  required
+                >
+                  <option value="" disabled>
+                    Select group size
+                  </option>
+                  {GROUP_PREFERENCES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </CardContent>
+          </Card>
+
           <Button
             type="submit"
             size="lg"
             className="w-full"
-            disabled={saving || !formData.skill_level || formData.interests.length === 0}
+            disabled={
+              saving ||
+              !formData.skill_level ||
+              formData.interests.length === 0 ||
+              formData.match_goals.length === 0 ||
+              formData.personality_traits.length === 0 ||
+              !formData.play_frequency ||
+              !formData.preferred_round_time ||
+              !formData.pace_of_play ||
+              !formData.swing_tendency ||
+              !formData.group_preference
+            }
           >
             {saving ? "Saving..." : "Complete Profile"}
           </Button>

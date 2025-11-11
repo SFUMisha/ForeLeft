@@ -1,13 +1,22 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import type { ChangeEvent } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
-import { MobileNav } from "@/components/mobile-nav"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
+
+import { MobileNav } from "@/components/mobile-nav"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { createClient } from "@/lib/supabase/client"
+import { BREAKDOWN_LABELS, computeCompatibility, formatLabel } from "@/lib/matchmaking"
+import type { CompatibilityBreakdownKey } from "@/lib/matchmaking"
+
+type SpotlightBreakdownItem = {
+  key: CompatibilityBreakdownKey
+  value: number
+}
 
 export default function MatchesPage() {
   const router = useRouter()
@@ -19,9 +28,63 @@ export default function MatchesPage() {
   const [acceptedMatches, setAcceptedMatches] = useState<any[]>([])
   const [allInterests, setAllInterests] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const sortedInterests = useMemo(() => Array.from(allInterests.values()).sort(), [allInterests])
 
   const selectedSkill = searchParams.get("skill") || "all"
   const selectedInterest = searchParams.get("interest") || "all"
+  const selectedTab = searchParams.get("tab") || "discover"
+
+  const pushWithParams = (params: URLSearchParams) => {
+    const query = params.toString()
+    router.push(query ? `/matches?${query}` : "/matches")
+  }
+
+  const handleTabChange = (value: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (value === "discover") {
+      params.delete("tab")
+    } else {
+      params.set("tab", value)
+    }
+    pushWithParams(params)
+  }
+
+  useEffect(() => {
+    if (potentialMatches.length === 0) {
+      setActiveIndex(0)
+      return
+    }
+
+    if (activeIndex >= potentialMatches.length) {
+      setActiveIndex(0)
+    }
+  }, [potentialMatches.length, activeIndex])
+
+  const handlePass = () => {
+    if (potentialMatches.length <= 1) {
+      return
+    }
+    setActiveIndex((prev: number) => (prev + 1) % potentialMatches.length)
+  }
+
+  const activeMatch = potentialMatches[activeIndex]
+
+  const otherMatches = useMemo(
+    () => potentialMatches.filter((_: any, index: number) => index !== activeIndex),
+    [potentialMatches, activeIndex],
+  )
+
+  const spotlightBreakdown = useMemo<SpotlightBreakdownItem[]>(() => {
+    if (!activeMatch?.compatibility?.breakdown) {
+      return []
+    }
+
+    return Object.entries(activeMatch.compatibility.breakdown)
+      .map(([key, value]) => ({ key: key as CompatibilityBreakdownKey, value: Number(value) }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 4)
+  }, [activeMatch])
 
   useEffect(() => {
     async function loadData() {
@@ -38,7 +101,7 @@ export default function MatchesPage() {
 
       setCurrentUserId(user.id)
 
-      console.log("[v0] Fetching potential matches...")
+  const { data: currentProfileData } = await supabase.from("profiles").select("*").eq("id", user.id).single()
 
       // Get potential matches (exclude current user)
       let matchesQuery = supabase
@@ -52,9 +115,7 @@ export default function MatchesPage() {
         matchesQuery = matchesQuery.eq("skill_level", selectedSkill)
       }
 
-      const { data: matchesData, error: matchesError } = await matchesQuery
-
-      console.log("[v0] Potential matches fetched:", matchesData?.length || 0, "Error:", matchesError)
+    const { data: matchesData } = await matchesQuery
 
       // Filter by interest if selected
       let filteredMatches = matchesData || []
@@ -62,7 +123,15 @@ export default function MatchesPage() {
         filteredMatches = filteredMatches.filter((profile: any) => profile.interests?.includes(selectedInterest))
       }
 
-      setPotentialMatches(filteredMatches)
+      const enrichedMatches = filteredMatches.map((profile: any) => ({
+        ...profile,
+        compatibility: computeCompatibility(currentProfileData, profile),
+      }))
+
+      enrichedMatches.sort((a: any, b: any) => (b.compatibility?.score || 0) - (a.compatibility?.score || 0))
+
+      setPotentialMatches(enrichedMatches)
+      setActiveIndex(0)
 
       // Get all unique interests for filter
       const interests = new Set<string>()
@@ -125,7 +194,7 @@ export default function MatchesPage() {
     } else {
       params.set("skill", skill)
     }
-    router.push(`/matches?${params.toString()}`)
+    pushWithParams(params)
   }
 
   const handleInterestChange = (interest: string) => {
@@ -135,7 +204,7 @@ export default function MatchesPage() {
     } else {
       params.set("interest", interest)
     }
-    router.push(`/matches?${params.toString()}`)
+    pushWithParams(params)
   }
 
   if (loading) {
@@ -159,7 +228,7 @@ export default function MatchesPage() {
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="discover" className="space-y-6">
+        <Tabs value={selectedTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="discover">Discover</TabsTrigger>
             <TabsTrigger value="requests">
@@ -175,7 +244,108 @@ export default function MatchesPage() {
 
           {/* Discover Tab */}
           <TabsContent value="discover" className="space-y-6">
-            {/* Filters */}
+            {activeMatch ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Match Spotlight</CardTitle>
+                  <CardDescription>We ranked golfers by how well they fit your vibe</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                    <div className="w-20 h-20 rounded-full border-4 border-primary/40 flex items-center justify-center shrink-0">
+                      <span className="text-2xl font-bold text-primary">{activeMatch.compatibility?.score ?? 0}%</span>
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <h3 className="text-xl font-semibold">{activeMatch.display_name}</h3>
+                        <span className="text-sm font-medium text-primary">
+                          {activeMatch.compatibility?.score ?? 0}% match
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                        <span className="capitalize">{activeMatch.skill_level}</span>
+                        {activeMatch.average_handicap && (
+                          <>
+                            <span>•</span>
+                            <span>Handicap: {activeMatch.average_handicap.toFixed(1)}</span>
+                          </>
+                        )}
+                        {activeMatch.pace_of_play && (
+                          <>
+                            <span>•</span>
+                            <span>Pace: {formatLabel(activeMatch.pace_of_play)}</span>
+                          </>
+                        )}
+                        {activeMatch.preferred_round_time && (
+                          <>
+                            <span>•</span>
+                            <span>Tee time: {formatLabel(activeMatch.preferred_round_time)}</span>
+                          </>
+                        )}
+                        {activeMatch.play_frequency && (
+                          <>
+                            <span>•</span>
+                            <span>Plays: {formatLabel(activeMatch.play_frequency)}</span>
+                          </>
+                        )}
+                      </div>
+                      {activeMatch.match_goals && activeMatch.match_goals.length > 0 && (
+                        <div className="flex flex-wrap gap-2 pt-2">
+                          {activeMatch.match_goals.slice(0, 3).map((goal: string) => (
+                            <span key={goal} className="px-2 py-1 rounded-md bg-primary/5 text-primary text-xs">
+                              {formatLabel(goal)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {spotlightBreakdown.length > 0 && (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {spotlightBreakdown.map((item: SpotlightBreakdownItem) => (
+                        <div
+                          key={item.key}
+                          className="flex items-center justify-between rounded-lg bg-muted/60 px-3 py-2 text-sm"
+                        >
+                          <span className="text-muted-foreground">
+                            {BREAKDOWN_LABELS[item.key] ?? formatLabel(item.key)}
+                          </span>
+                          <span className="font-semibold text-foreground">{item.value}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Button
+                      variant="ghost"
+                      className="sm:w-28"
+                      onClick={handlePass}
+                      disabled={potentialMatches.length <= 1}
+                    >
+                      Pass
+                    </Button>
+                    <Button asChild variant="outline" className="flex-1">
+                      <Link href={`/matches/${activeMatch.id}`}>View Profile</Link>
+                    </Button>
+                    <Button asChild className="flex-1">
+                      <Link href={`/matches/${activeMatch.id}/request`}>Connect</Link>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardContent className="py-12 text-center space-y-2">
+                  <p className="text-muted-foreground">We need a bit more info to find your golf crew.</p>
+                  <p className="text-sm text-muted-foreground">
+                    Try updating your profile preferences or broadening your filters.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardContent className="pt-6 space-y-4">
                 <div className="space-y-2">
@@ -183,7 +353,7 @@ export default function MatchesPage() {
                   <select
                     value={selectedSkill}
                     className="w-full px-3 py-2 rounded-lg border border-input bg-background"
-                    onChange={(e) => handleSkillChange(e.target.value)}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) => handleSkillChange(e.target.value)}
                   >
                     <option value="all">All Levels</option>
                     <option value="beginner">Beginner</option>
@@ -197,98 +367,99 @@ export default function MatchesPage() {
                   <select
                     value={selectedInterest}
                     className="w-full px-3 py-2 rounded-lg border border-input bg-background"
-                    onChange={(e) => handleInterestChange(e.target.value)}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) => handleInterestChange(e.target.value)}
                   >
                     <option value="all">All Interests</option>
-                    {Array.from(allInterests)
-                      .sort()
-                      .map((interest) => (
-                        <option key={interest} value={interest}>
-                          {interest}
-                        </option>
-                      ))}
+                    {sortedInterests.map((interest) => (
+                      <option key={interest} value={interest}>
+                        {formatLabel(interest)}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Potential Matches */}
-            <div className="space-y-4">
-              {potentialMatches.length > 0 ? (
-                potentialMatches.map((profile: any) => (
-                  <Card key={profile.id}>
+            {otherMatches.length > 0 ? (
+              <div className="space-y-4">
+                {otherMatches.map((match: any) => (
+                  <Card key={match.id}>
                     <CardContent className="pt-6">
                       <div className="flex items-start gap-4">
-                        <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                          {profile.avatar_url ? (
+                        <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          {match.avatar_url ? (
                             <img
-                              src={profile.avatar_url || "/placeholder.svg"}
-                              alt={profile.display_name}
+                              src={match.avatar_url || "/placeholder.svg"}
+                              alt={match.display_name}
                               className="w-16 h-16 rounded-full object-cover"
                             />
                           ) : (
-                            <span className="text-2xl font-bold text-primary">{profile.display_name?.[0] || "?"}</span>
+                            <span className="text-2xl font-bold text-primary">{match.display_name?.[0] || "?"}</span>
                           )}
                         </div>
-                        <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-0 space-y-3">
                           <div className="flex items-start justify-between gap-2">
                             <div>
-                              <h3 className="font-semibold text-lg">{profile.display_name}</h3>
-                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <span className="capitalize">{profile.skill_level}</span>
-                                {profile.average_handicap && (
+                              <h3 className="font-semibold text-lg">{match.display_name}</h3>
+                              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                                <span className="capitalize">{match.skill_level}</span>
+                                {match.average_handicap && (
                                   <>
                                     <span>•</span>
-                                    <span>Handicap: {profile.average_handicap.toFixed(1)}</span>
+                                    <span>Handicap: {match.average_handicap.toFixed(1)}</span>
                                   </>
                                 )}
                               </div>
                             </div>
-                            <div className="flex items-center gap-1 text-sm">
-                              <svg className="w-4 h-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                              </svg>
-                              <span className="font-medium">{profile.trust_score}</span>
+                            <div className="text-right text-sm font-medium text-primary">
+                              {match.compatibility?.score ?? 0}% match
                             </div>
                           </div>
-                          {profile.bio && (
-                            <p className="text-sm text-muted-foreground mt-2 leading-relaxed line-clamp-2">
-                              {profile.bio}
-                            </p>
+                          {match.bio && (
+                            <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2">{match.bio}</p>
                           )}
-                          {profile.interests && profile.interests.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mt-3">
-                              {profile.interests.slice(0, 3).map((interest: string) => (
+                          {match.interests && match.interests.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {match.interests.slice(0, 3).map((interest: string) => (
                                 <span
                                   key={interest}
                                   className="px-2 py-1 rounded-md bg-secondary/10 text-secondary text-xs"
                                 >
-                                  {interest}
+                                  {formatLabel(interest)}
                                 </span>
                               ))}
                             </div>
                           )}
-                          <div className="flex gap-2 mt-4">
+                          {match.match_goals && match.match_goals.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {match.match_goals.slice(0, 2).map((goal: string) => (
+                                <span key={goal} className="px-2 py-1 rounded-md bg-primary/10 text-primary text-xs">
+                                  {formatLabel(goal)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex gap-2">
                             <Button asChild size="sm" className="flex-1">
-                              <Link href={`/matches/${profile.id}`}>View Profile</Link>
+                              <Link href={`/matches/${match.id}`}>View Profile</Link>
                             </Button>
                             <Button asChild size="sm" variant="outline" className="flex-1 bg-transparent">
-                              <Link href={`/matches/${profile.id}/request`}>Send Request</Link>
+                              <Link href={`/matches/${match.id}/request`}>Send Request</Link>
                             </Button>
                           </div>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
-                ))
-              ) : (
-                <Card>
-                  <CardContent className="py-12 text-center">
-                    <p className="text-muted-foreground">No matches found. Try adjusting your filters.</p>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+                ))}
+              </div>
+            ) : activeMatch ? (
+              <Card>
+                <CardContent className="py-8 text-center text-muted-foreground">
+                  You&apos;ve seen your top match. Tap pass or adjust filters for new faces.
+                </CardContent>
+              </Card>
+            ) : null}
           </TabsContent>
 
           {/* Requests Tab */}
